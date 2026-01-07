@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://www.knime.org/2008/09/XMLConfig" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.knime.org/2008/09/XMLConfig http://www.knime.org/XMLConfig_2008_09.xsd" key="settings.xml">
+    <entry key="node_file" type="xstring" value="settings.xml"/>
+    <config key="flow_stack"/>
+    <config key="internal_node_subsettings">
+        <entry key="memory_policy" type="xstring" value="CacheSmallInMemory"/>
+    </config>
+    <config key="model">
+        <entry key="sourceCode" type="xstring" value="# =========================================================%%00010# IMPORTS%%00010# =========================================================%%00010import torch%%00010import torch.nn as nn%%00010import torch.optim as optim%%00010from torchvision import datasets, transforms%%00010from torch.utils.data import DataLoader%%00010import pandas as pd%%00010import os%%00010from torchvision.utils import save_image%%00010%%00010# =========================================================%%00010# DEVICE%%00010# =========================================================%%00010device = &quot;cuda&quot; if torch.cuda.is_available() else &quot;cpu&quot;%%00010%%00010# PARAMETERS%%00010BATCH_SIZE = 128%%00010LATENT_DIM = 100%%00010IMG_DIM = 28 * 28%%00010EPOCHS = 50%%00010LR = 0.0002%%00010%%00010# MNIST TRANSFORM  [0,1] → [-1,1]  (for tanh)%%00010%%00010transform = transforms.Compose([%%00010    transforms.ToTensor(),%%00010    transforms.Normalize((0.5,), (0.5,))%%00010])%%00010%%00010# LOAD MNIST DATASET (unsupervised)%%00010%%00010mnist = datasets.MNIST(%%00010    root=&quot;./data&quot;,%%00010    train=True,%%00010    download=False,%%00010    transform=transform%%00010)%%00010%%00010dataloader = DataLoader(%%00010    mnist,%%00010    batch_size=BATCH_SIZE,%%00010    shuffle=True%%00010)%%00010os.makedirs(&quot;generated_samples&quot;, exist_ok=True)%%00010%%00010# Bruit fixe pour comparer les progrès%%00010fixed_noise = torch.randn(16, LATENT_DIM).to(device)%%00010%%00010# GENERATOR%%00010class Generator(nn.Module):%%00010    def __init__(self):%%00010        super().__init__()%%00010        self.model = nn.Sequential(%%00010            nn.Linear(LATENT_DIM, 256),%%00010            nn.ReLU(),%%00010            nn.Linear(256, 512),%%00010            nn.ReLU(),%%00010            nn.Linear(512, IMG_DIM),%%00010            nn.Tanh()%%00010        )%%00010%%00010    def forward(self, z):%%00010        return self.model(z)%%00010        %%00010# DISCRIMINATOR%%00010%%00010class Discriminator(nn.Module):%%00010    def __init__(self):%%00010        super().__init__()%%00010        self.model = nn.Sequential(%%00010            nn.Linear(IMG_DIM, 512),%%00010            nn.LeakyReLU(0.2),%%00010            nn.Dropout(0.3),%%00010            nn.Linear(512, 256),%%00010            nn.LeakyReLU(0.2),%%00010            nn.Linear(256, 1),%%00010            nn.Sigmoid()%%00010        )%%00010%%00010    def forward(self, x):%%00010        return self.model(x)%%00010%%00010%%00010# INITIALIZE MODELS%%00010generator = Generator().to(device)%%00010discriminator = Discriminator().to(device)%%00010%%00010criterion = nn.BCELoss()%%00010opt_gen = optim.Adam(generator.parameters(), lr=LR)%%00010opt_disc = optim.Adam(discriminator.parameters(), lr=LR)%%00010%%00010# TRAINING LOOP%%00010%%00010losses = []%%00010%%00010for epoch in range(EPOCHS):%%00010    for real_imgs, _ in dataloader:%%00010%%00010        real_imgs = real_imgs.view(-1, IMG_DIM).to(device)%%00010        batch_size = real_imgs.size(0)%%00010%%00010        real_labels = torch.ones(batch_size, 1).to(device)%%00010        fake_labels = torch.zeros(batch_size, 1).to(device)%%00010%%00010        # -------- Train Discriminator --------%%00010        noise = torch.randn(batch_size, LATENT_DIM).to(device)%%00010        fake_imgs = generator(noise)%%00010%%00010        loss_real = criterion(discriminator(real_imgs), real_labels)%%00010        loss_fake = criterion(discriminator(fake_imgs.detach()), fake_labels)%%00010        disc_loss = loss_real + loss_fake%%00010%%00010        opt_disc.zero_grad()%%00010        disc_loss.backward()%%00010        opt_disc.step()%%00010%%00010        # -------- Train Generator --------%%00010        noise = torch.randn(batch_size, LATENT_DIM).to(device)%%00010        fake_imgs = generator(noise)%%00010        gen_loss = criterion(discriminator(fake_imgs), real_labels)%%00010%%00010        opt_gen.zero_grad()%%00010        gen_loss.backward()%%00010        opt_gen.step()%%00010%%00010    losses.append([epoch + 1, disc_loss.item(), gen_loss.item()])%%00010        # SAVE GENERATED IMAGES EVERY 5 EPOCHS%%00010    if (epoch + 1) % 5 == 0:%%00010        with torch.no_grad():%%00010            fake_imgs = generator(fixed_noise)%%00010            %%00010            # reshape to image format%%00010            fake_imgs = fake_imgs.view(-1, 1, 28, 28)%%00010            %%00010            # [-1,1] → [0,1] for visualization%%00010            fake_imgs = (fake_imgs + 1) / 2%%00010            %%00010            save_image(%%00010                fake_imgs,%%00010                f&quot;generated_samples/epoch_{epoch+1}.png&quot;,%%00010                nrow=4%%00010            )%%00010%%00010%%00010%%00010# SAVE GENERATOR (for next node)%%00010%%00010torch.save(generator.state_dict(), &quot;generator.pth&quot;)%%00010%%00010%%00010# KNIME OUTPUT TABLE (MANDATORY)%%00010output_table_1 = pd.DataFrame(%%00010    losses,%%00010    columns=[&quot;Epoch&quot;, &quot;Discriminator Loss&quot;, &quot;Generator Loss&quot;]%%00010)%%00010"/>
+        <entry key="rowLimit" type="xint" value="1000"/>
+        <entry key="convertMissingToPython" type="xboolean" value="false"/>
+        <entry key="convertMissingFromPython" type="xboolean" value="false"/>
+        <entry key="sentinelOption" type="xstring" value="MIN_VAL"/>
+        <entry key="sentinelValue" type="xint" value="0"/>
+        <entry key="chunkSize" type="xint" value="500000"/>
+        <entry key="pythonVersionOption" type="xstring" value="python3"/>
+        <entry key="python2Command" type="xstring" value=""/>
+        <entry key="python3Command" type="xstring" value=""/>
+    </config>
+    <config key="nodeAnnotation">
+        <entry key="text" type="xstring" value="Entraînement"/>
+        <entry key="contentType" type="xstring" value="text/plain"/>
+        <entry key="bgcolor" type="xint" value="16777215"/>
+        <entry key="x-coordinate" type="xint" value="0"/>
+        <entry key="y-coordinate" type="xint" value="0"/>
+        <entry key="width" type="xint" value="0"/>
+        <entry key="height" type="xint" value="0"/>
+        <entry key="alignment" type="xstring" value="CENTER"/>
+        <entry key="borderSize" type="xint" value="0"/>
+        <entry key="borderColor" type="xint" value="0"/>
+        <entry key="defFontSize" type="xint" value="-1"/>
+        <entry key="annotation-version" type="xint" value="20230412"/>
+        <config key="styles"/>
+    </config>
+    <entry key="customDescription" type="xstring" isnull="true" value=""/>
+    <entry key="state" type="xstring" value="EXECUTED"/>
+    <entry key="factory" type="xstring" value="org.knime.python2.nodes.script2.Python2ScriptNodeFactory2"/>
+    <entry key="node-name" type="xstring" value="Python Script (legacy)"/>
+    <entry key="node-bundle-name" type="xstring" value="KNIME Python nodes"/>
+    <entry key="node-bundle-symbolic-name" type="xstring" value="org.knime.python2.nodes"/>
+    <entry key="node-bundle-vendor" type="xstring" value="KNIME AG, Zurich, Switzerland"/>
+    <entry key="node-bundle-version" type="xstring" value="5.5.0.v202412191418"/>
+    <entry key="node-feature-name" type="xstring" value="KNIME Python 2 Integration (legacy)"/>
+    <entry key="node-feature-symbolic-name" type="xstring" value="org.knime.features.python2.feature.group"/>
+    <entry key="node-feature-vendor" type="xstring" value="KNIME AG, Zurich, Switzerland"/>
+    <entry key="node-feature-version" type="xstring" value="5.5.0.v202504161238"/>
+    <config key="factory_settings"/>
+    <config key="node_creation_config">
+        <config key="Input object (pickled)"/>
+        <config key="Input table">
+            <config key="port_0">
+                <entry key="object_class" type="xstring" value="org.knime.core.node.BufferedDataTable"/>
+            </config>
+        </config>
+        <config key="Output table">
+            <config key="port_0">
+                <entry key="object_class" type="xstring" value="org.knime.core.node.BufferedDataTable"/>
+            </config>
+        </config>
+        <config key="Output image"/>
+        <config key="Output object (pickled)"/>
+    </config>
+    <entry key="name" type="xstring" value="Python Script (legacy)"/>
+    <entry key="hasContent" type="xboolean" value="true"/>
+    <entry key="isInactive" type="xboolean" value="false"/>
+    <config key="ports">
+        <config key="port_1">
+            <entry key="index" type="xint" value="1"/>
+            <entry key="port_spec_class" type="xstring" value="org.knime.core.data.DataTableSpec"/>
+            <entry key="port_object_class" type="xstring" value="org.knime.core.node.BufferedDataTable"/>
+            <entry key="port_object_summary" type="xstring" value="Rows: 50, Cols: 3"/>
+            <entry key="port_dir_location" type="xstring" value="port_1"/>
+        </config>
+    </config>
+    <config key="filestores">
+        <entry key="file_store_location" type="xstring" isnull="true" value=""/>
+        <entry key="file_store_id" type="xstring" isnull="true" value=""/>
+    </config>
+</config>
