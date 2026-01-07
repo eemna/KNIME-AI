@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://www.knime.org/2008/09/XMLConfig" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.knime.org/2008/09/XMLConfig http://www.knime.org/XMLConfig_2008_09.xsd" key="settings.xml">
+    <entry key="node_file" type="xstring" value="settings.xml"/>
+    <config key="flow_stack"/>
+    <config key="internal_node_subsettings">
+        <entry key="memory_policy" type="xstring" value="CacheSmallInMemory"/>
+    </config>
+    <config key="model">
+        <entry key="sourceCode" type="xstring" value="%%00010# 0. Imports &amp; paramètres%%00010%%00010import torch%%00010import torch.nn as nn%%00010import torch.optim as optim%%00010import matplotlib.pyplot as plt%%00010import numpy as np%%00010import pandas as pd%%00010%%00010from torchvision import datasets, transforms%%00010from torch.utils.data import DataLoader, random_split%%00010%%00010# Paramètres%%00010batch_size = 128%%00010epochs = 30%%00010latent_dim = 2      # mets 2 pour visualisation, 10 ou 20 pour meilleure qualité%%00010beta = 1.0          # beta-VAE%%00010lr = 1e-3%%00010%%00010device = torch.device(&quot;cuda&quot; if torch.cuda.is_available() else &quot;cpu&quot;)%%00010print(&quot;Device:&quot;, device)%%00010%%00010%%00010# a) Load &amp; prepare MNIST%%00010%%00010transform = transforms.ToTensor()%%00010%%00010dataset = datasets.MNIST(%%00010    root=&quot;./data&quot;,%%00010    train=True,%%00010    download=True,%%00010    transform=transform%%00010)%%00010%%00010train_size = int(0.8 * len(dataset))%%00010test_size = len(dataset) - train_size%%00010train_dataset, test_dataset = random_split(dataset, [train_size, test_size])%%00010%%00010train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)%%00010test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)%%00010%%00010# Visualiser quelques images%%00010images, labels = next(iter(train_loader))%%00010plt.figure(figsize=(6,2))%%00010for i in range(6):%%00010    plt.subplot(1,6,i+1)%%00010    plt.imshow(images[i][0], cmap=&quot;gray&quot;)%%00010    plt.axis(&quot;off&quot;)%%00010plt.suptitle(&quot;MNIST samples&quot;)%%00010plt.show()%%00010%%00010%%00010# b) Encoder VAE%%00010%%00010class Encoder(nn.Module):%%00010    def __init__(self, latent_dim):%%00010        super().__init__()%%00010        self.fc1 = nn.Linear(784, 256)%%00010        self.fc_mu = nn.Linear(256, latent_dim)%%00010        self.fc_logvar = nn.Linear(256, latent_dim)%%00010%%00010    def forward(self, x):%%00010        x = torch.relu(self.fc1(x))%%00010        mu = self.fc_mu(x)%%00010        logvar = self.fc_logvar(x)%%00010        return mu, logvar%%00010%%00010# Reparameterization trick%%00010def reparameterize(mu, logvar):%%00010    std = torch.exp(0.5 * logvar)%%00010    eps = torch.randn_like(std)%%00010    return mu + eps * std%%00010%%00010%%00010# c) Decoder VAE%%00010%%00010class Decoder(nn.Module):%%00010    def __init__(self, latent_dim):%%00010        super().__init__()%%00010        self.fc1 = nn.Linear(latent_dim, 256)%%00010        self.fc2 = nn.Linear(256, 784)%%00010%%00010    def forward(self, z):%%00010        z = torch.relu(self.fc1(z))%%00010        return torch.sigmoid(self.fc2(z))%%00010%%00010encoder = Encoder(latent_dim).to(device)%%00010decoder = Decoder(latent_dim).to(device)%%00010%%00010%%00010# d) Loss VAE + Training%%00010%%00010def vae_loss(recon_x, x, mu, logvar, beta=1.0):%%00010    recon_loss = nn.functional.binary_cross_entropy(%%00010        recon_x, x, reduction='sum'%%00010    )%%00010    kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())%%00010    return recon_loss + beta * kl_loss, recon_loss, kl_loss%%00010%%00010optimizer = optim.Adam(%%00010    list(encoder.parameters()) + list(decoder.parameters()),%%00010    lr=lr%%00010)%%00010%%00010loss_history = []%%00010%%00010for epoch in range(epochs):%%00010    total_loss = 0%%00010    for x, _ in train_loader:%%00010        x = x.view(-1, 784).to(device)%%00010%%00010        mu, logvar = encoder(x)%%00010        z = reparameterize(mu, logvar)%%00010        recon = decoder(z)%%00010%%00010        loss, _, _ = vae_loss(recon, x, mu, logvar, beta)%%00010%%00010        optimizer.zero_grad()%%00010        loss.backward()%%00010        optimizer.step()%%00010%%00010        total_loss += loss.item()%%00010%%00010    avg_loss = total_loss / len(train_loader.dataset)%%00010    loss_history.append(avg_loss)%%00010    print(f&quot;Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}&quot;)%%00010%%00010# Plot loss%%00010plt.plot(loss_history)%%00010plt.title(&quot;VAE Training Loss&quot;)%%00010plt.xlabel(&quot;Epoch&quot;)%%00010plt.ylabel(&quot;Loss&quot;)%%00010plt.show()%%00010%%00010%%00010# e) Reconstruction &amp; Latent space%%00010%%00010encoder.eval()%%00010decoder.eval()%%00010%%00010x, y = next(iter(test_loader))%%00010x = x.view(-1, 784).to(device)%%00010%%00010with torch.no_grad():%%00010    mu, logvar = encoder(x)%%00010    z = reparameterize(mu, logvar)%%00010    recon = decoder(z)%%00010%%00010# Afficher reconstructions%%00010plt.figure(figsize=(8,4))%%00010for i in range(6):%%00010    plt.subplot(2,6,i+1)%%00010    plt.imshow(x[i].view(28,28).cpu(), cmap=&quot;gray&quot;)%%00010    plt.axis(&quot;off&quot;)%%00010    plt.subplot(2,6,i+7)%%00010    plt.imshow(recon[i].view(28,28).cpu(), cmap=&quot;gray&quot;)%%00010    plt.axis(&quot;off&quot;)%%00010plt.suptitle(&quot;Top: Original | Bottom: Reconstruction&quot;)%%00010plt.show()%%00010%%00010# Latent space (si latent_dim = 2)%%00010if latent_dim == 2:%%00010    latents = []%%00010    labels = []%%00010%%00010    for x, y in test_loader:%%00010        x = x.view(-1, 784).to(device)%%00010        with torch.no_grad():%%00010            mu, _ = encoder(x)%%00010        latents.append(mu.cpu())%%00010        labels.append(y)%%00010%%00010    latents = torch.cat(latents)%%00010    labels = torch.cat(labels)%%00010%%00010    plt.figure(figsize=(6,6))%%00010    plt.scatter(latents[:,0], latents[:,1], c=labels, cmap=&quot;tab10&quot;, s=5)%%00010    plt.colorbar()%%00010    plt.title(&quot;Latent Space&quot;)%%00010    plt.show()%%00010%%00010# f) Generate new images%%00010%%00010z = torch.randn(16, latent_dim).to(device)%%00010with torch.no_grad():%%00010    samples = decoder(z)%%00010%%00010plt.figure(figsize=(4,4))%%00010for i in range(16):%%00010    plt.subplot(4,4,i+1)%%00010    plt.imshow(samples[i].view(28,28).cpu(), cmap=&quot;gray&quot;)%%00010    plt.axis(&quot;off&quot;)%%00010plt.suptitle(&quot;Generated digits&quot;)%%00010plt.show()%%00010%%00010%%00010output_table = pd.DataFrame({%%00010    &quot;status&quot;: [&quot;OK&quot;],%%00010    &quot;epochs&quot;: [epochs],%%00010    &quot;latent_dim&quot;: [latent_dim],%%00010    &quot;beta&quot;: [beta],%%00010    &quot;device&quot;: [str(device)]%%00010})%%00010"/>
+        <entry key="rowLimit" type="xint" value="1000"/>
+        <entry key="convertMissingToPython" type="xboolean" value="false"/>
+        <entry key="convertMissingFromPython" type="xboolean" value="false"/>
+        <entry key="sentinelOption" type="xstring" value="MIN_VAL"/>
+        <entry key="sentinelValue" type="xint" value="0"/>
+        <entry key="chunkSize" type="xint" value="500000"/>
+        <entry key="pythonVersionOption" type="xstring" value="python3"/>
+        <entry key="python2Command" type="xstring" value=""/>
+        <entry key="python3Command" type="xstring" value=""/>
+    </config>
+    <config key="nodeAnnotation">
+        <entry key="text" type="xstring" value="(training + generation)"/>
+        <entry key="contentType" type="xstring" value="text/plain"/>
+        <entry key="bgcolor" type="xint" value="16777215"/>
+        <entry key="x-coordinate" type="xint" value="0"/>
+        <entry key="y-coordinate" type="xint" value="0"/>
+        <entry key="width" type="xint" value="0"/>
+        <entry key="height" type="xint" value="0"/>
+        <entry key="alignment" type="xstring" value="CENTER"/>
+        <entry key="borderSize" type="xint" value="0"/>
+        <entry key="borderColor" type="xint" value="0"/>
+        <entry key="defFontSize" type="xint" value="-1"/>
+        <entry key="annotation-version" type="xint" value="20230412"/>
+        <config key="styles"/>
+    </config>
+    <entry key="customDescription" type="xstring" isnull="true" value=""/>
+    <entry key="state" type="xstring" value="EXECUTED"/>
+    <entry key="factory" type="xstring" value="org.knime.python2.nodes.source.Python2SourceNodeFactory"/>
+    <entry key="node-name" type="xstring" value="Python Source (legacy)"/>
+    <entry key="node-bundle-name" type="xstring" value="KNIME Python nodes"/>
+    <entry key="node-bundle-symbolic-name" type="xstring" value="org.knime.python2.nodes"/>
+    <entry key="node-bundle-vendor" type="xstring" value="KNIME AG, Zurich, Switzerland"/>
+    <entry key="node-bundle-version" type="xstring" value="5.5.0.v202412191418"/>
+    <entry key="node-feature-name" type="xstring" value="KNIME Python 2 Integration (legacy)"/>
+    <entry key="node-feature-symbolic-name" type="xstring" value="org.knime.features.python2.feature.group"/>
+    <entry key="node-feature-vendor" type="xstring" value="KNIME AG, Zurich, Switzerland"/>
+    <entry key="node-feature-version" type="xstring" value="5.5.0.v202504161238"/>
+    <config key="factory_settings"/>
+    <entry key="name" type="xstring" value="Python Source (legacy)"/>
+    <entry key="hasContent" type="xboolean" value="true"/>
+    <entry key="isInactive" type="xboolean" value="false"/>
+    <config key="ports">
+        <config key="port_1">
+            <entry key="index" type="xint" value="1"/>
+            <entry key="port_spec_class" type="xstring" value="org.knime.core.data.DataTableSpec"/>
+            <entry key="port_object_class" type="xstring" value="org.knime.core.node.BufferedDataTable"/>
+            <entry key="port_object_summary" type="xstring" value="Rows: 1, Cols: 5"/>
+            <entry key="port_dir_location" type="xstring" value="port_1"/>
+        </config>
+    </config>
+    <config key="filestores">
+        <entry key="file_store_location" type="xstring" isnull="true" value=""/>
+        <entry key="file_store_id" type="xstring" isnull="true" value=""/>
+    </config>
+</config>
